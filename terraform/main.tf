@@ -386,6 +386,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:GetBucketAcl",
       "s3:GetBucketCORS",
       "s3:GetBucketVersioning",
+      "s3:GetAccelerateConfiguration",
       "s3:GetBucketPolicy",
       "s3:PutBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
@@ -396,7 +397,6 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:PutBucketOwnershipControls",
       "s3:GetBucketLogging",
       "s3:PutBucketLogging",
-      "s3:GetBucketAccelerateConfiguration",
     ]
 
     resources = [
