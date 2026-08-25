@@ -10,7 +10,7 @@ terraform {
       bucket         = "my-site-tfstate-12123123122"
       key            = "personal-website/terraform.tfstate"
       region         = "us-east-1"
-      dynamodb_table = "terraform-locks"
+      use_lockfile   = true
       encrypt        = true
     }
 }
@@ -27,11 +27,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
 }
-
-//----------------------//
-//S3 Bucket for state file
-//----------------------//
-
 
 //----------------------//
 //S3 Bucket for frontend
@@ -352,7 +347,7 @@ data "aws_iam_policy_document" "github_assume_role" {
       variable = "token.actions.githubusercontent.com:repository"
       values   = ["Zach116/personal-website"]
     }
-    
+
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
@@ -398,6 +393,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:PutBucketOwnershipControls",
       "s3:GetBucketLogging",
       "s3:PutBucketLogging",
+      "s3:GetBucketAcl",
     ]
 
     resources = [
@@ -427,10 +423,12 @@ data "aws_iam_policy_document" github_aws_resource_access {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:DeleteObject",
     ]
 
     resources = [
       "arn:aws:s3:::my-site-tfstate-12123123122/personal-website/terraform.tfstate",
+      "arn:aws:s3:::my-site-tfstate-12123123122/personal-website/terraform.tfstate.tflock",
     ]
   }
 
@@ -476,6 +474,8 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:ListAttachedRolePolicies",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
     ]
 
     resources = [
@@ -496,25 +496,11 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "dynamodb:PutItem",
       "dynamodb:GetItem",
       "dynamodb:TagResource",
+      "dynamodb:DescribeContinuousBackups",
     ]
 
     resources = [
       "arn:aws:dynamodb:*:*:table/Statistics",
-    ]
-  }
-
-  statement {
-    sid    = "TerraformLockTableAccess"
-    effect = "Allow"
-
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:DeleteItem",
-    ]
-
-    resources = [
-      "arn:aws:dynamodb:*:*:table/terraform-locks",
     ]
   }
 
@@ -570,6 +556,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "acm:GetCertificate",
       "acm:DeleteCertificate",
       "acm:AddTagsToCertificate",
+      "acm:ListTagsForCertificate",
     ]
 
     resources = [
@@ -588,6 +575,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "route53:ChangeResourceRecordSets",
       "route53:ListResourceRecordSets",
       "route53:GetChange",
+      "route53:ListTagsForResource",
     ]
 
     resources = [
@@ -609,6 +597,19 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     resources = [
       "*",
+    ]
+  }
+
+  statement {
+    sid    = "GithubOidcProviderRead"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetOpenIDConnectProvider",
+    ]
+
+    resources = [
+      aws_iam_openid_connect_provider.github.arn,
     ]
   }
 }
