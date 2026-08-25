@@ -1,0 +1,308 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zach's Site - Discord Bot and ChatGPT</title>
+    <link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</head>
+
+<body class="is-preload">
+
+  <!-- Wrapper -->
+    <div id="wrapper">
+
+      <!-- Header -->
+        <header id="header">
+          <a href="index.html" class="logo">Home</a>
+        </header>
+
+      <!-- Nav -->
+        <nav id="nav">
+          <ul class="links">
+            <li class="active"><a href="index.html">Projects</a></li>
+            <li><a href="resume.html">Resume</a></li>
+          </ul>
+          <ul class="icons">
+            <li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
+            <li><a href="https://github.com/Zach116" class="icon brands fa-github"><span class="label">GitHub</span></a></li>
+          </ul>
+        </nav>
+
+      <!-- Main -->
+        <div id="main">
+
+          <!-- Post -->
+            <section class="post">
+              <header class="major">
+                <span class="date">September 2, 2025</span>
+                <h1>Building a Discord Health Bot on AWS in Under 3 Hours</h1>
+                <p>How I Combined ChatGPT with My Expertise</p>
+                <p>It started as a simple idea: I wanted a <strong>Discord bot</strong> that could help me and my friends track health goals. We wanted something interactive — a little competition to see who could hit their workout and nutrition targets.</p>
+                <p>Instead of spreadsheets or manual tracking, why not automate it? That’s when I decided to build a Discord bot.</p>
+              </header>
+
+              <h2>Fast Prototyping with ChatGPT</h2>
+
+              <p>I used ChatGPT to quickly scaffold the bot. Within minutes, I had a working Python structure with basic commands: logging workouts, tracking nutrition, and generating leaderboards.</p>
+
+              <pre><code class="language-python">
+@bot.tree.command(name="set_nutrition_goal", description="Set your daily calorie goal and target days per week")
+async def set_nutrition_goal(interaction: discord.Interaction, calories: int, days_per_week: int):
+    data = load_data()
+    user_id = str(interaction.user.id)
+    data.setdefault(user_id, {
+        "workout_goal": 0, "workouts_done": 0,
+        "nutrition_goal": 0, "nutrition_done": 0,
+        "nutrition_days_goal": 0, "nutrition_days_met": 0,
+        "streak": 0, "best_streak": 0,
+        "multi_streak": 0, "best_multi_streak": 0
+    })
+    data[user_id]["nutrition_goal"] = calories
+    data[user_id]["nutrition_days_goal"] = days_per_week
+    save_data(data)
+    await interaction.response.send_message(
+        f"🥗 Nutrition goal set to {calories} calories/day for {days_per_week} days per week."
+    )
+              </code></pre>
+
+              <p>While ChatGPT wrote the initial code, my <strong>experience in Python</strong> allowed me to:</p>
+              <ul>
+                  <li>Catch potential <strong>logic errors</strong>.</li>
+                  <li>Ensure <strong>consistent architecture</strong>.</li>
+                  <li>Structure the code so it could <strong>scale</strong> with multiple commands and data types.</li>
+              </ul>
+
+              <p>The bot was running in a local environment within <strong>30 minutes</strong>, but I wanted it <strong>always online</strong>, so I turned to AWS.</p>
+
+              <h2>Hosting on AWS EC2</h2>
+
+              <p>I used <strong>Terraform</strong> to provision everything in a repeatable, version-controlled way. There were a few potential solutions, but I wanted to change my current bot architecture as little as possible, so I went with these services:</p>
+              <ul>
+                  <li><strong>EC2 Instance</strong> to run the bot as a service.</li>
+                  <li><strong>S3 Bucket</strong> for storing the bot’s code.</li>
+                  <li><strong>IAM Roles</strong> for secure access to S3 and SSM.</li>
+                  <li><strong>SSM (Session Manager)</strong> to manage EC2 without exposing SSH.</li>
+              </ul>
+
+              <p>Because I understand AWS, I was able to:</p>
+              <ul>
+                  <li>Make sure best practices were followed. Like granting <strong>least-privilege permissions</strong> for S3 and SSM.</li>
+                  <li>Ensure the solution choices being made were the simplest and most efficient. <strong> E.g. Server-driven vs Serverless</strong></li>
+                  <li><strong>Troubleshoot</strong> issues as they occurred.</li>
+              </ul>
+
+              <h2>Persistent Data with JSON</h2>
+
+              <p>One key design choice was storing all user progress in a <strong>JSON file</strong>:</p>
+
+              <pre><code class="language-python">
+def load_data():
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+              </code></pre>
+
+              <p>This allowed for:</p>
+              <ul>
+                  <li>Easy <strong>serialization</strong> of Python data structures.</li>
+                  <li>Full <strong>persistent storage</strong> without a database.</li>
+                  <li>Simple <strong>versioning and recovery</strong>.</li>
+              </ul>
+
+              <p>But I also knew that storing the JSON only on EC2 was risky. What if the instance failed?</p>
+
+              <h2>Making Data Resilient: EC2 ↔ S3 Sync</h2>
+
+              <p>To make the bot resilient, I set up a workflow where:</p>
+              <ol>
+                  <li><strong>Local changes</strong> to the bot are uploaded to <strong>S3</strong>.</li>
+                  <li>EC2 instances <strong>pull updated code</strong> automatically via SSM.</li>
+                  <li>The <strong>JSON file</strong> on EC2 is synced back to <strong>S3</strong> periodically. This was done using a cron job.</li>
+              </ol>
+
+              <p>This ensures:</p>
+              <ul>
+                  <li>The latest bot code and data are <strong>always backed up</strong>.</li>
+                  <li>Multiple instances could potentially run the bot with <strong>consistent state</strong>.</li>
+                  <li><strong>Disaster recovery</strong> is straightforward — just launch a new EC2 and sync from S3.</li>
+              </ul>
+
+              <p>Example script for syncing code to S3, then restarting the bot:</p>
+
+              <pre><code class="language-bash">
+#!/bin/bash
+
+BUCKET_NAME=$(terraform output -raw s3_bucket_name)
+
+# Upload updated code
+aws s3 cp ./bot/health_bot.py s3://$BUCKET_NAME/health_bot.py
+
+# Use SSM to pull updated code from S3 and restart bot on EC2
+INSTANCE_ID=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=DiscordBotInstance" \
+    --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+aws ssm send-command \
+    --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+    --document-name "AWS-RunShellScript" \
+    --comment "Update Discord bot code" \
+    --parameters 'commands=["aws s3 cp s3://'$BUCKET_NAME'/health_bot.py /home/ubuntu/bot/health_bot.py", "systemctl restart discord-bot.service"]'
+              </code></pre>
+
+              <h2>Automating Updates</h2>
+
+              <p>At this point, everything was automated!</p>
+              <ul>
+                  <li>I use a shell script and <strong>AWS SSM SendCommand</strong> to upload code changes and tell EC2 to fetch the latest code then restart the bot.</li>
+                  <li>Terraform manages all infrastructure so I can <strong>recreate instances</strong> reliably.</li>
+                  <li>Persistent JSON data is <strong>backed up to S3</strong>, from EC2 every minute by utilizing a cron job.</li>
+              </ul>
+
+              <h2>Example: Daily Reset Task</h2>
+
+              <pre><code class="language-python">
+@tasks.loop(time=datetime.time(0, 0, tzinfo=PACIFIC))
+async def daily_reset():
+    data = load_data()
+
+    embed = discord.Embed(
+        title="🥗 Daily Nutrition Reset",
+        description="Your daily nutrition logs have been reset!",
+        color=discord.Color.orange(),
+        timestamp=datetime.datetime.now(PACIFIC)
+    )
+
+    for uid, stats in data.items():
+        user = await bot.fetch_user(int(uid))
+
+        # Check if today's goal is met
+        if stats["nutrition_goal"] > 0 and stats["nutrition_done"] <= stats["nutrition_goal"]:
+            stats["nutrition_days_met"] += 1
+
+        workout_summary = f"Workouts this week: {stats['workouts_done']}/{stats['workout_goal']}" if stats["workout_goal"] > 0 else "No workout goal set"
+        nutrition_summary = f"Calories today: {stats['nutrition_done']}/{stats['nutrition_goal']}\n" \
+                            f"Days met this week: {stats['nutrition_days_met']}/{stats['nutrition_days_goal']}" if stats["nutrition_goal"] > 0 else "No nutrition goal set"
+
+        embed.add_field(
+            name=user.display_name,
+            value=f"{workout_summary}\n{nutrition_summary}",
+            inline=False
+        )
+
+        stats["nutrition_done"] = 0
+
+    save_data(data)
+
+    channel = bot.get_channel(SUMMARY_CHANNEL_ID)
+    if channel:
+        await channel.send(embed=embed)
+
+    print("🔄 Daily nutrition reset complete.")
+              </code></pre>
+
+              <p>Because the JSON is synced back to S3, even if EC2 crashes during the reset, the data remains safe. I had an issue with this command at first with it failing silently. Utilizing error logs on EC2 I quickly realized that if a user had not set a nutirition goal, they wouldn't have the nutirition_days_met variable. Adding some logic around that portion of code easily resolved the issue. This is a good example of how you can't just rely on AI and need to have the expertise in knowing the fundamentals of these systems.</p>
+
+              <h2>Architecture Overview</h2>
+
+              <div class="mermaid">
+              graph TD
+                A[Local Dev Machine] -->|Push code| B[S3 Bucket]
+                B -->|New Code| C[EC2 Instance]
+                C <-->|Command Communication| D[Discord API]
+                C -->|JSON Sync| B[S3 Bucket]
+              </div>
+
+              <h2>Lessons Learned</h2>
+
+              <p>This project highlights the <strong>synergy between AI and expertise</strong>:</p>
+              <ul>
+                  <li><strong>ChatGPT</strong> accelerated prototyping.</li>
+                  <li><strong>My Python skills</strong> ensured clean, async-safe, maintainable code.</li>
+                  <li><strong>AWS/Terraform expertise</strong> allowed me to secure, automate, and back up the bot properly.</li>
+              </ul>
+
+              <p>In under <strong>3 hours</strong>, I went from an idea for a health competition with friends to a fully deployed, resilient Discord bot in the cloud.</p>
+
+              <h2>Final Thoughts</h2>
+
+              <p>AI tools like ChatGPT are amazing for scaffolding projects and testing ideas quickly. But your own expertise is what ensures that the system is <strong>secure, resilient, and production-ready</strong>. There were also several times I caught chatGPT not using the most suitable solution and was able to redirect it.</p>
+
+              <p>By combining my knowledge with AI, I turned a fun personal project into a <strong>robust cloud deployment</strong> that automatically handles code updates and data persistence. There are still improvements that can be done such as:</p>
+              <ul>
+                <li>Switching from SSM commands for pulling code changes into EC2 to <strong>event driven architecture</strong>.</li>
+                <li>Finding a method for uploading JSON from EC2 to S3 only when <strong>changes are detected</strong>. This would be much more efficient than using a cron job that syncs every minute.</li>
+                <li>Add the bot files to be tracked by Terraform so they would be uploaded to S3 with a terraform apply command. This, in conjunction with moving to full event driven architecture, would <strong>remove the need for running an additional script when making bot changes.</strong>
+                <li>Generally cleaning up the code, making it more consistent, and adding robust error handling.</li>
+              </ul>
+              <p>However, being able to get a fully working project done in 3 hours for something that my friends and I wanted for fun truly shows how AI can be used as a tool.</p>
+
+            </section>
+
+        </div>
+
+      <!-- Footer -->
+        <footer id="footer">
+          <section class="split contact">
+            <section class="alt">
+              <h3>Address</h3>
+              <p>Melbourne, Florida</p>
+            </section>
+            <section>
+              <h3>Phone</h3>
+              <p>(971) 400-9572</a></p>
+            </section>
+            <section>
+              <h3>Email</h3>
+              <p>zach.bishop116@gmail.com</a></p>
+            </section>
+            <section>
+              <h3>Social</h3>
+              <ul class="icons alt">
+                <li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands alt fa-instagram"><span class="label">Instagram</span></a></li>
+                <li><a href="https://github.com/Zach116" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
+              </ul>
+            </section>
+          </section>
+        </footer>
+
+      <!-- Copyright -->
+        <div id="copyright">
+          <ul><li>&copy; Untitled</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li></ul>
+        </div>
+
+    </div>
+
+  <!-- Scripts -->
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/jquery.scrollex.min.js"></script>
+    <script src="assets/js/jquery.scrolly.min.js"></script>
+    <script src="assets/js/browser.min.js"></script>
+    <script src="assets/js/breakpoints.min.js"></script>
+    <script src="assets/js/util.js"></script>
+    <script src="assets/js/main.js"></script>
+
+</body>
+</html>
+
+<body>
+
+
+</body>
+</html>

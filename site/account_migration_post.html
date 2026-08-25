@@ -1,0 +1,179 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>Zach's Site - Account Migration</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+				<!-- Header -->
+					<header id="header">
+						<a href="index.html" class="logo">Home</a>
+					</header>
+
+				<!-- Nav -->
+					<nav id="nav">
+						<ul class="links">
+							<li class="active"><a href="index.html">Projects</a></li>
+							<li><a href="resume.html">Resume</a></li>
+						</ul>
+						<ul class="icons">
+							<li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
+							<li><a href="https://github.com/Zach116" class="icon brands fa-github"><span class="label">GitHub</span></a></li>
+						</ul>
+					</nav>
+
+				<!-- Main -->
+					<div id="main">
+
+						<!-- Post -->
+							<section class="post">
+								<header class="major">
+									<span class="date">August 9, 2024</span>
+									<h1>Account Migration Using Terraform</h1>
+									<p>Learning and utilizing Terraform to rebuild this website.</p>
+								</header>
+
+
+								<p>A few months after initially creating my website I received an email from AWS stating my one year free period was ending on my account. I did not want to start paying more for hosting my site, so I decided to open a new account and transfer my website to it. Unfortunately, this was not an easy task since I had created all the AWS resources using the AWS web console. I would essentially need to redo everything within a new AWS account. To prevent this issue from occurring in the future, I decided now would be a good time to learn Terraform and recreate my website using IaC. That way, an account migration would be as simple as changing which account my Terraform code was being applied to.</p>
+
+								<h3>Preparing a New Account</h3>
+								<p>The timing on this account closure could not have been worse. I was in the middle of moving across the country and it would be a few months before I had my desktop set up again. However, I at least needed to close down my existing AWS account to prevent extra charges. I took a day and used my laptop to take screenshots and notes of all the resources I had set up. I then created a new account and performed all the new account setup steps (enabling MFA, setting up budgets, creating an IAM admin user, etc.). The last thing to do before closing my old account was to migrate my custom domain from my old AWS account to my newly created account. This was a simple process and just involved following the wizard within the AWS web console for Route53. This would be the only thing I would do manually from within the web console. Everything else would be recreated using Terraform. With all of the setup completed, I closed my old account and accepted that my website would be down for a few months until I was able to get a more dedicated workspace set up.</p>
+								
+								<h3>Learning Terraform</h3>
+								<p>A few months past and I was finally settled into a new house and past the busy holiday season. I got two free days and within that time I was able to learn Terraform and write all the code needed to get my website up and running with just a few issues left to fix. I already had a good idea of the structure of IaC from completing my Solutions Architect Associate certification. All my knowledge came from learning CloudFormation so I just needed to learn the syntax for Terraform. I watched a YouTube video that broke down all the different aspects of Terraform as well as the common best practices. After that, I was confident enough to begin recreating my website with the help of the Terraform documentation.</p>
+
+								<h3>Initial Terraform Setup</h3>
+								<p>I set up Terraform and the AWS CLI on my desktop. To give Terraform access to my AWS account, I created an IAM user and created access keys for Terraform to use. I am aware this is not best practice, but I wanted to focus on getting my site up and running first as well as leave some areas of improvement for when I came back to refactor and improve my system. I plan on using an IAM role or the IAM identity center in the future. For a first test to confirm Terraform could access my AWS account, I created a simple S3 bucket. This created with zero issues and I began creating all the resources needed to get my website running again.</p>
+
+								<h3>Recursive File Upload</h3>
+								<p>After getting a static S3 bucket created, I wanted to make a system for uploading my site files and any changes to the S3 bucket through Terraform. Looking through the Terraform documentation, I found that there was no simple way to upload entire folders to S3. This made sense since S3 doesn’t actually have a real folder structure. However, I did some research online and found a method for doing recursive folder file uploads. This would find every file within a source folder and even look within other folders in that source. I used a mapping that examined the file extension name to decide on what the content type should be. The content type property needed to be included to make sure the files would be served to the browser and not downloaded. I also made sure to include the etag property that was set to a hash of the file. This would ensure that if the file content was changed, Terraform would recognize this and reupload the file. This made it very easy to make changes to my site and immediately perform a “terraform apply” to update my site.</p>
+								<pre><code>
+variable "mime_types" {
+	default = {
+		htm    = "text/html"
+		html   = "text/html"
+		txt    = "text/plain"
+		scss   = "text/x-scss"
+		css    = "text/css"
+		ttf    = "font/ttf"
+		woff   = "font/woff"
+		woff2  = "font/woff2"
+		js     = "application/javascript"
+		map    = "application/javascript"
+		json   = "application/json"
+		jpg    = "image/jpeg"
+		png    = "image/png"
+		svg    = "image/svg+xml"
+		eot    = "application/vnd.ms-fontobject"
+		drawio = "application/vnd.jgraph.mxfile"
+	}
+}
+	
+resource "aws_s3_object" "site-upload" {
+	for_each        = fileset("../Frontend Files/", "**/*.*")
+	bucket          = "my-site-12123123122"
+	key             = replace(each.value, "../Frontend Files/", "")
+	source          = "../Frontend Files/${each.value}"
+	etag            = filemd5("../Frontend Files/${each.value}")
+	content_type    = lookup(var.mime_types, split(".", each.value)[length(split(".", each.value)) - 1])
+
+	depends_on =[
+	aws_s3_bucket.frontend-bucket
+	]
+}
+								</code></pre>
+								
+								<h3>CloudFront, Route53, and an Issue</h3>
+								<p>Now that my files were being successfully hosted on AWS, I just needed to create the structure to serve them through my custom domain name. Within my Terraform code, I created a new CloudFront distribution with all of the needed details (TTL, viewer policy, etc.). I created an OAC and changed the S3 bucket resource policy to only allow access from this OAC. I did a quick test and confirmed I could no longer access my website through the bucket endpoint while still being able to access it through the CloudFront distribution domain name. All that was left to do was associate my custom domain name to this distribution. I used Terraform to create the R53 hosted zone and ACM certificate. I verified ownership by creating the domain record and using Terraform’s ACM certificate validation resource.</p>
+								<pre><code>
+resource "aws_acm_certificate" "domain-cert" {
+	domain_name       = "zach-bishop.net"
+	validation_method = "DNS"
+	lifecycle {
+		create_before_destroy = true
+	}
+}
+	
+resource "aws_route53_zone" "primary" {
+	name = "zach-bishop.net"
+}
+	
+resource "aws_route53_record" "domain-record" {
+	allow_overwrite = true
+	name =  tolist(aws_acm_certificate.domain-cert.domain_validation_options)[0].resource_record_name
+	records = [tolist(aws_acm_certificate.domain-cert.domain_validation_options)[0].resource_record_value]
+	type = tolist(aws_acm_certificate.domain-cert.domain_validation_options)[0].resource_record_type
+	zone_id = aws_route53_zone.primary.zone_id
+	ttl = 60
+}
+	
+resource "aws_acm_certificate_validation" "domain-validation" {
+	certificate_arn         = aws_acm_certificate.domain-cert.arn
+	validation_record_fqdns = [aws_route53_record.domain-record.fqdn]
+}
+								</code></pre>
+								<p>Now I was finally ready to add an alias to my CloudFront distribution and create the A alias record. I wrote the code, confirmed what changes would be made with “terraform plan”, applied them, and got an error: “One or more of the CNAMEs you provided are already associated with a different resource”. Confused, I did some searching online and quickly discovered that AWS resources do not immediately delete on account closure. Instead, the account is suspended for 90 days with an option for it to be reopened. After 90 days, the account is fully deleted along with all resources. This meant that the CloudFront disttribtution in my old account was still using my custom domain name as an alias. I had a few options here. I could contact AWS support to reopen my account and delete the distribution myself, or I could wait until the 90 days were up. Luckily for me, it was only a few days until the 90 day mark. My inability to work on my site for a few months turned out to be a small blessing in disguise by making this decision for me. I waited the few days but I was never notified that my account was deleted and I still could not add the alias to my distribution. After working with support for a week trying to get the account deleted, I decided to just reopen the account and delete the resources myself. Once the old CloudFront distribution was deleted, I was able to set the alias on my new CloudFront distribution as well as the necessary Route 53 record. The only other issue I encountered was being unable to navigate to my website via the custom domain due to DNS caching on my router (which took me about an hour of confusion to realize).</p>
+
+								<h3>Finishing Touches</h3>
+								<p>My website was now running and mostly functional. All that was left to do was add the infrastructure to support the viewer count. I recreated the DynamoDB table but made some changes to the names of the attributes. I named the two attributes “property” (my primary key) and “total”. This just made more sense and allowed for additional items to be added to track other statistics if desired. I created the Lambda function for accessing the database and stored the Lambda function code on my local machine. I plan to move everything into Github and use GitActions to create a CI/CD pipeline eventually. The last thing needed to connect everything together was the API Gateway. I decided to use an HTTP API this time instead of a REST API since I only needed the basic features. Creating the API, deployment, integration, and route was all fairly straightforward. I even added logging to a newly created CloudWatch log group. I set up permissions for the gateway to invoke my lambda function and ran a quick test using curl. I hit an error which I quickly realized was due to how I was returning the data from my lambda function. I changed the format of the data I was returning and this time it worked! The last thing to do was enable CORS which was very easy within Terraform. Testing through my site kept giving me an issue with the browser being denied access to the gateway. It took me longer than I care to admit to realize the Javascript on my site was calling the wrong API Gateway. I updated that and everything worked!</p>
+
+								<h3>Takeaways</h3>
+								<p>I was pleasantly surprised with how quickly I was able to learn and utilize Terraform. In just a few days I was able to recreate my site using IaC. Having the ability to quickly look through my code to get an overview of my infrastructure was a pleasant improvement to clicking through the AWS web console. I also enjoyed how easy it was to make quick configuration changes without having to click through lots of different settings. I will definitely continue using Terraform for building my infrastructure in the future. Next on the list of improvements is refactoring my code, migrating to Github, and implementing a full CI/CD pipeline!</p>
+							</section>
+					</div>
+
+				<!-- Footer -->
+					<footer id="footer">
+						<section class="split contact">
+							<section class="alt">
+								<h3>Address</h3>
+								<p>Lake Worth Beach, Florida</p>
+							</section>
+							<section>
+								<h3>Phone</h3>
+								<p>(971) 400-9572</a></p>
+							</section>
+							<section>
+								<h3>Email</h3>
+								<p>zach.bishop116@gmail.com</a></p>
+							</section>
+							<section>
+								<h3>Social</h3>
+								<ul class="icons alt">
+									<li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands alt fa-instagram"><span class="label">Instagram</span></a></li>
+									<li><a href="https://github.com/Zach116" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
+								</ul>
+							</section>
+						</section>
+					</footer>
+
+				<!-- Copyright -->
+					<div id="copyright">
+						<ul><li>&copy; Untitled</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li></ul>
+					</div>
+
+			</div>
+
+		<!-- Scripts -->
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/browser.min.js"></script>
+			<script src="assets/js/breakpoints.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>
