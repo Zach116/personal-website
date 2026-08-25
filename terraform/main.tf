@@ -399,6 +399,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:PutBucketLogging",
       "s3:GetBucketRequestPayment",
       "s3:GetLifecycleConfiguration",
+      "s3:GetReplicationConfiguration",
     ]
 
     resources = [
