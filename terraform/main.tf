@@ -348,12 +348,15 @@ data "aws_iam_policy_document" "github_assume_role" {
     }
 
     condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:repository"
+      values   = ["Zach116/personal-website"]
+    }
+    
+    condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [
-        "repo:Zach116/personal-website:ref:refs/heads/main",
-        "repo:Zach116/personal-website:pull_request"
-      ]
+      values   = ["repo:Zach116*/personal-website*:*"]
     }
   }  
 }
