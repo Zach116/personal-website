@@ -117,11 +117,11 @@ variable "mime_types" {
 }
 
 resource "aws_s3_object" "site_upload" {
-    for_each        = fileset("../Frontend Files/", "**/*.*")
+    for_each        = fileset("../site/", "**/*.*")
     bucket          = "my-site-12123123122"
-    key             = replace(each.value, "../Frontend Files/", "")
-    source          = "../Frontend Files/${each.value}"
-    etag            = filemd5("../Frontend Files/${each.value}")
+    key             = replace(each.value, "../site/", "")
+    source          = "../site/${each.value}"
+    etag            = filemd5("../site/${each.value}")
     content_type    = lookup(var.mime_types, split(".", each.value)[length(split(".", each.value)) - 1])
 
     depends_on =[
@@ -350,7 +350,10 @@ data "aws_iam_policy_document" "github_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:Zach116/personal-website:ref:refs/heads/main"]
+      values   = [
+        "repo:Zach116/personal-website:ref:refs/heads/main",
+        "repo:Zach116/personal-website:pull_request"
+      ]
     }
   }  
 }
