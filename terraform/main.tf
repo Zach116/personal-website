@@ -383,6 +383,9 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     actions = [
       "s3:ListBucket",
+      "s3:GetBucketAcl",
+      "s3:GetBucketCORS",
+      "s3:GetBucketVersioning",
       "s3:GetBucketPolicy",
       "s3:PutBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
@@ -393,8 +396,6 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:PutBucketOwnershipControls",
       "s3:GetBucketLogging",
       "s3:PutBucketLogging",
-      "s3:GetBucketAcl",
-      "s3:GetBucketCORS",
     ]
 
     resources = [
@@ -492,6 +493,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     actions = [
       "iam:GetRole",
+      "iam:GetRolePolicy",
       "iam:ListRolePolicies",
       "iam:ListAttachedRolePolicies",
     ]
@@ -511,6 +513,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "dynamodb:DescribeTable",
       "dynamodb:DescribeContinuousBackups",
       "dynamodb:DescribeTimeToLive",
+      "dynamodb:ListTagsOfResource",
       "dynamodb:UpdateTable",
       "dynamodb:PutItem",
       "dynamodb:GetItem",
