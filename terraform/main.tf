@@ -394,6 +394,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:GetBucketLogging",
       "s3:PutBucketLogging",
       "s3:GetBucketAcl",
+      "s3:GetBucketCORS",
     ]
 
     resources = [
@@ -441,6 +442,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "lambda:UpdateFunctionCode",
       "lambda:UpdateFunctionConfiguration",
       "lambda:GetFunction",
+      "lambda:GetFunctionCodeSigningConfig",
       "lambda:DeleteFunction",
       "lambda:AddPermission",
       "lambda:RemovePermission",
@@ -485,6 +487,21 @@ data "aws_iam_policy_document" github_aws_resource_access {
   }
 
   statement {
+    sid    = "GithubActionsRoleSelfRead"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetRole",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+    ]
+
+    resources = [
+      "arn:aws:iam::*:role/github-actions-website-deploy",
+    ]
+  }
+
+  statement {
     sid    = "DynamoDbTableAccess"
     effect = "Allow"
 
@@ -492,11 +509,12 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "dynamodb:CreateTable",
       "dynamodb:DeleteTable",
       "dynamodb:DescribeTable",
+      "dynamodb:DescribeContinuousBackups",
+      "dynamodb:DescribeTimeToLive",
       "dynamodb:UpdateTable",
       "dynamodb:PutItem",
       "dynamodb:GetItem",
       "dynamodb:TagResource",
-      "dynamodb:DescribeContinuousBackups",
     ]
 
     resources = [
