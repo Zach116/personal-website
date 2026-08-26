@@ -545,6 +545,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "logs:DescribeLogGroups",
       "logs:PutRetentionPolicy",
       "logs:TagResource",
+      "logs:ListTagsForResource",
     ]
 
     resources = [
