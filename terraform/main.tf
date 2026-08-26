@@ -368,6 +368,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
     effect = "Allow"
 
     actions = [
+      "s3:GetObject",
       "s3:PutObject",
       "s3:DeleteObject",
     ]
@@ -568,6 +569,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:UpdateOriginAccessControl",
       "cloudfront:DeleteOriginAccessControl",
+      "cloudfront:ListTagsForResource",
     ]
 
     resources = [
