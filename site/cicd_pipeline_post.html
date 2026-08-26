@@ -1,0 +1,177 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zach's Site - CI/CD with GitHub Actions</title>
+    <link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</head>
+
+<body class="is-preload">
+
+  <!-- Wrapper -->
+    <div id="wrapper">
+
+      <!-- Header -->
+        <header id="header">
+          <a href="index.html" class="logo">Home</a>
+        </header>
+
+      <!-- Nav -->
+        <nav id="nav">
+          <ul class="links">
+            <li class="active"><a href="index.html">Projects</a></li>
+            <li><a href="resume.html">Resume</a></li>
+          </ul>
+          <ul class="icons">
+            <li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands fa-instagram"><span class="label">Instagram</span></a></li>
+            <li><a href="https://github.com/Zach116" class="icon brands fa-github"><span class="label">GitHub</span></a></li>
+          </ul>
+        </nav>
+
+      <!-- Main -->
+        <div id="main">
+
+          <!-- Post -->
+            <section class="post">
+              <header class="major">
+                <span class="date">August 25, 2026</span>
+                <h1>Moving My Website to a Real CI/CD Pipeline with GitHub Actions</h1>
+                <p>Migrating my Terraform-managed AWS infrastructure onto GitHub, with OIDC-based deployments and no long-lived credentials.</p>
+                <div class="image main" id="image"><img src="images/github_actions_diagram.svg" alt="" /></div>
+              </header>
+
+              <p>My website's infrastructure has always lived on my local machine. Terraform files, edits, applies, all of it happened from my desktop with credentials sitting on my hard drive. It worked, but it wasn't something I could point to and say "this is how I'd actually run infrastructure at a job." So I decided it was time to move the whole project onto GitHub and build a real CI/CD pipeline around it using GitHub Actions.</p>
+
+              <h2>Why This Project First</h2>
+
+              <p>I have two personal projects that could have made this jump: this website, and a Discord bot running on EC2. I picked the website first on purpose. Its deploy flow is just syncing static files to S3 and applying Terraform, no servers to SSH into, no service to restart, nothing that could go down mid-deploy. It felt like the right place to learn the pattern before applying it somewhere with more moving parts.</p>
+
+              <h2>OIDC Instead of Access Keys</h2>
+
+              <p>The first real decision was how GitHub Actions would authenticate to AWS. The old-fashioned way is storing long-lived AWS access keys as GitHub secrets, but that's exactly the kind of thing I wanted to avoid on a resume-facing project. Instead, I set up an OpenID Connect (OIDC) trust relationship between GitHub and AWS. GitHub issues a short-lived signed token for each workflow run, and AWS verifies that token against an IAM role's trust policy before handing out temporary credentials. No stored keys, nothing to rotate, nothing to leak.</p>
+
+              <p>Getting the trust policy right took more iterations than I expected. My first version scoped access using the token's <code>sub</code> claim matched against a plain <code>repo:owner/repo:ref:refs/heads/main</code> string. It failed immediately on a pull request, since GitHub formats that claim differently depending on the event type. Then, once I broadened it, I ran into something I hadn't seen documented anywhere obvious: GitHub had appended my account ID and repo ID directly into the claim, like <code>repo:Zach116@8534562/personal-website@1345430038:pull_request</code>, since GitHub adds numeric IDs to prevent a renamed account or repo from inheriting trust meant for a previous owner. The fix was conditioning on the plain <code>repository</code> claim instead, alongside a wildcarded <code>sub</code> match to satisfy AWS's requirement that the trust policy scope on <code>sub</code> or <code>job_workflow_ref</code> specifically.</p>
+
+              <pre><code class="language-hcl">
+condition {
+  test     = "StringEquals"
+  variable = "token.actions.githubusercontent.com:repository"
+  values   = ["Zach116/personal-website"]
+}
+
+condition {
+  test     = "StringLike"
+  variable = "token.actions.githubusercontent.com:sub"
+  values   = ["repo:Zach116*/personal-website*:*"]
+}
+              </code></pre>
+
+              <h2>Migrating Terraform State to S3</h2>
+
+              <p>My state file had always lived locally. Moving it to a shared backend was non-negotiable for this to work, since GitHub Actions needs to read and write the exact same state my local machine uses. I stood up an S3 bucket for state (with versioning and encryption enabled), migrated my existing state into it, and pointed my main configuration at the new backend. I also picked up Terraform's newer native S3 locking feature instead of the older DynamoDB-based lock table, one less piece of infrastructure to manage for a project this size.</p>
+
+              <h2>Scoping the IAM Policy the Hard Way</h2>
+
+              <p>This was, by a wide margin, the most time-consuming part of the whole project. I built a custom IAM policy for the GitHub Actions role rather than reaching for broad managed permissions, and every single AWS resource type in my config, S3, Lambda, DynamoDB, CloudFront, ACM, Route53, API Gateway, has its own set of read-only calls Terraform makes during a plan to check for drift, on top of the actual write actions needed to manage it. I found this out the hard way, one <code>AccessDenied</code> error at a time, across dozens of workflow runs.</p>
+
+              <p>Eventually I stopped fixing errors one at a time and used CloudTrail to pull the complete list of every API call the role had actually made during a run, cross-referenced it against my policy, and closed every remaining gap in one pass. AWS also has an IAM Access Analyzer feature that generates a policy directly from CloudTrail activity, which would have saved a lot of the manual cross-referencing, worth knowing about for next time. What I ended up with is a policy scoped down to specific resource ARNs and specific actions per service, not a single wildcard permission across an entire service.</p>
+
+              <h2>The Finished Pipeline</h2>
+
+              <p>The workflow now runs on every push and pull request against <code>main</code>. Pull requests trigger a <code>terraform plan</code> only, giving me a diff to review before anything touches real infrastructure. Merging to <code>main</code> runs <code>plan</code>, <code>apply</code>, and then syncs my site files to S3 in sequence.</p>
+
+              <pre><code class="language-yaml">
+jobs:
+  terraform:
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::762233764200:role/github-actions-website-deploy
+          aws-region: us-east-1
+      - run: terraform plan
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve
+
+  deploy-site:
+    needs: terraform
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: arn:aws:iam::762233764200:role/github-actions-website-deploy
+            aws-region: us-east-1
+      - run: aws s3 sync ./site s3://my-site-12123123122 --delete
+              </code></pre>
+
+              <h2>Lessons Learned</h2>
+
+              <ul>
+                <li>OIDC is genuinely worth the setup cost. Not needing to store or rotate AWS credentials anywhere in GitHub is a meaningful security improvement over access keys, even for a personal project.</li>
+                <li>Least-privilege IAM policies take real, sustained effort to get right, and most of that effort is in the read-side permissions Terraform needs just to figure out what already exists, not the write permissions that actually change anything.</li>
+                <li>Debugging AWS permission errors is a skill in its own right. I used AI tools to help draft and iterate on policy documents throughout this project, but every fix still required understanding what Terraform's provider was actually doing under the hood, why an OIDC claim was shaped a certain way, or why a specific IAM action doesn't support resource-level scoping. That underlying knowledge was the difference between quickly diagnosing an error and just guessing at fixes.</li>
+              </ul>
+
+              <h2>Final Thoughts</h2>
+
+              <p>What used to be a purely local workflow, edit files, run <code>terraform apply</code>, hope nothing broke, is now a proper pipeline with pull request review, a plan preview before any change goes live, and short-lived credentials instead of stored keys. It's a small personal site, but the pattern behind it is exactly the same one used to deploy production infrastructure at any company doing this seriously.</p>
+
+              <p>Next up: applying the same approach to my Discord bot project. That one runs on EC2 instead of S3, which means dealing with a running service and a deploy step that can't just be an idempotent file sync, a good next challenge now that I've got the GitHub Actions and OIDC fundamentals down.</p>
+
+            </section>
+
+        </div>
+
+      <!-- Footer -->
+        <footer id="footer">
+          <section class="split contact">
+            <section class="alt">
+              <h3>Address</h3>
+              <p>Melbourne, Florida</p>
+            </section>
+            <section>
+              <h3>Phone</h3>
+              <p>(971) 400-9572</a></p>
+            </section>
+            <section>
+              <h3>Email</h3>
+              <p>zach.bishop116@gmail.com</a></p>
+            </section>
+            <section>
+              <h3>Social</h3>
+              <ul class="icons alt">
+                <li><a href="https://www.instagram.com/zach_the_bish/" class="icon brands alt fa-instagram"><span class="label">Instagram</span></a></li>
+                <li><a href="https://github.com/Zach116" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
+              </ul>
+            </section>
+          </section>
+        </footer>
+
+      <!-- Copyright -->
+        <div id="copyright">
+          <ul><li>&copy; Untitled</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li></ul>
+        </div>
+
+    </div>
+
+  <!-- Scripts -->
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/jquery.scrollex.min.js"></script>
+    <script src="assets/js/jquery.scrolly.min.js"></script>
+    <script src="assets/js/browser.min.js"></script>
+    <script src="assets/js/breakpoints.min.js"></script>
+    <script src="assets/js/util.js"></script>
+    <script src="assets/js/main.js"></script>
+
+</body>
+</html>
