@@ -369,6 +369,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     actions = [
       "s3:GetObject",
+      "s3:GetObjectTagging",
       "s3:PutObject",
       "s3:DeleteObject",
     ]
@@ -548,6 +549,19 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     resources = [
       "arn:aws:logs:*:*:log-group:/aws/api-gw/*",
+    ]
+  }
+
+  statement {
+    sid    = "CloudWatchLogsDescribe"
+    effect = "Allow"
+
+    actions = [
+      "logs:DescribeLogGroups",
+    ]
+
+    resources = [
+      "*",
     ]
   }
 
