@@ -10,7 +10,7 @@ terraform {
       bucket         = "my-site-tfstate-12123123122"
       key            = "personal-website/terraform.tfstate"
       region         = "us-east-1"
-      dynamodb_table = "terraform-locks"
+      use_lockfile   = true
       encrypt        = true
     }
 }
@@ -27,11 +27,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
 }
-
-//----------------------//
-//S3 Bucket for state file
-//----------------------//
-
 
 //----------------------//
 //S3 Bucket for frontend
@@ -117,11 +112,11 @@ variable "mime_types" {
 }
 
 resource "aws_s3_object" "site_upload" {
-    for_each        = fileset("../Frontend Files/", "**/*.*")
+    for_each        = fileset("../site/", "**/*.*")
     bucket          = "my-site-12123123122"
-    key             = replace(each.value, "../Frontend Files/", "")
-    source          = "../Frontend Files/${each.value}"
-    etag            = filemd5("../Frontend Files/${each.value}")
+    key             = replace(each.value, "../site/", "")
+    source          = "../site/${each.value}"
+    etag            = filemd5("../site/${each.value}")
     content_type    = lookup(var.mime_types, split(".", each.value)[length(split(".", each.value)) - 1])
 
     depends_on =[
@@ -348,9 +343,15 @@ data "aws_iam_policy_document" "github_assume_role" {
     }
 
     condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:repository"
+      values   = ["Zach116/personal-website"]
+    }
+
+    condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:Zach116/personal-website:ref:refs/heads/main"]
+      values   = ["repo:Zach116*/personal-website*:*"]
     }
   }  
 }
@@ -367,6 +368,8 @@ data "aws_iam_policy_document" github_aws_resource_access {
     effect = "Allow"
 
     actions = [
+      "s3:GetObject",
+      "s3:GetObjectTagging",
       "s3:PutObject",
       "s3:DeleteObject",
     ]
@@ -382,6 +385,10 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     actions = [
       "s3:ListBucket",
+      "s3:GetBucketAcl",
+      "s3:GetBucketCORS",
+      "s3:GetBucketVersioning",
+      "s3:GetAccelerateConfiguration",
       "s3:GetBucketPolicy",
       "s3:PutBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
@@ -392,6 +399,13 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:PutBucketOwnershipControls",
       "s3:GetBucketLogging",
       "s3:PutBucketLogging",
+      "s3:GetBucketRequestPayment",
+      "s3:GetLifecycleConfiguration",
+      "s3:GetReplicationConfiguration",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetBucketLocation",
+      "s3:GetBucketObjectLockConfiguration",
+      "s3:GetBucketTagging",
     ]
 
     resources = [
@@ -421,10 +435,12 @@ data "aws_iam_policy_document" github_aws_resource_access {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:DeleteObject",
     ]
 
     resources = [
       "arn:aws:s3:::my-site-tfstate-12123123122/personal-website/terraform.tfstate",
+      "arn:aws:s3:::my-site-tfstate-12123123122/personal-website/terraform.tfstate.tflock",
     ]
   }
 
@@ -437,6 +453,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "lambda:UpdateFunctionCode",
       "lambda:UpdateFunctionConfiguration",
       "lambda:GetFunction",
+      "lambda:GetFunctionCodeSigningConfig",
       "lambda:DeleteFunction",
       "lambda:AddPermission",
       "lambda:RemovePermission",
@@ -470,11 +487,29 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:ListAttachedRolePolicies",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
     ]
 
     resources = [
       "arn:aws:iam::*:role/iam-for-lambda",
       "arn:aws:iam::*:policy/lambda-exec",
+    ]
+  }
+
+  statement {
+    sid    = "GithubActionsRoleSelfRead"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+    ]
+
+    resources = [
+      "arn:aws:iam::*:role/github-actions-website-deploy",
     ]
   }
 
@@ -486,6 +521,9 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "dynamodb:CreateTable",
       "dynamodb:DeleteTable",
       "dynamodb:DescribeTable",
+      "dynamodb:DescribeContinuousBackups",
+      "dynamodb:DescribeTimeToLive",
+      "dynamodb:ListTagsOfResource",
       "dynamodb:UpdateTable",
       "dynamodb:PutItem",
       "dynamodb:GetItem",
@@ -494,21 +532,6 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     resources = [
       "arn:aws:dynamodb:*:*:table/Statistics",
-    ]
-  }
-
-  statement {
-    sid    = "TerraformLockTableAccess"
-    effect = "Allow"
-
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:DeleteItem",
-    ]
-
-    resources = [
-      "arn:aws:dynamodb:*:*:table/terraform-locks",
     ]
   }
 
@@ -522,10 +545,24 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "logs:DescribeLogGroups",
       "logs:PutRetentionPolicy",
       "logs:TagResource",
+      "logs:ListTagsForResource",
     ]
 
     resources = [
       "arn:aws:logs:*:*:log-group:/aws/api-gw/*",
+    ]
+  }
+
+  statement {
+    sid    = "CloudWatchLogsDescribe"
+    effect = "Allow"
+
+    actions = [
+      "logs:DescribeLogGroups",
+    ]
+
+    resources = [
+      "*",
     ]
   }
 
@@ -547,6 +584,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:UpdateOriginAccessControl",
       "cloudfront:DeleteOriginAccessControl",
+      "cloudfront:ListTagsForResource",
     ]
 
     resources = [
@@ -564,6 +602,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "acm:GetCertificate",
       "acm:DeleteCertificate",
       "acm:AddTagsToCertificate",
+      "acm:ListTagsForCertificate",
     ]
 
     resources = [
@@ -582,6 +621,7 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "route53:ChangeResourceRecordSets",
       "route53:ListResourceRecordSets",
       "route53:GetChange",
+      "route53:ListTagsForResource",
     ]
 
     resources = [
@@ -603,6 +643,19 @@ data "aws_iam_policy_document" github_aws_resource_access {
 
     resources = [
       "*",
+    ]
+  }
+
+  statement {
+    sid    = "GithubOidcProviderRead"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetOpenIDConnectProvider",
+    ]
+
+    resources = [
+      aws_iam_openid_connect_provider.github.arn,
     ]
   }
 }
