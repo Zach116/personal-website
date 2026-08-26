@@ -40,7 +40,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-website-deploy
+          role-to-assume: arn:aws:iam::762233764200:role/github-actions-website-deploy
           aws-region: us-east-1
 
       - run: aws s3 sync ./site s3://my-site-12123123122 --delete
