@@ -400,6 +400,10 @@ data "aws_iam_policy_document" github_aws_resource_access {
       "s3:GetBucketRequestPayment",
       "s3:GetLifecycleConfiguration",
       "s3:GetReplicationConfiguration",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetBucketLocation",
+      "s3:GetBucketObjectLockConfiguration",
+      "s3:GetBucketTagging",
     ]
 
     resources = [
